@@ -102,7 +102,9 @@ journalctl -u raindelay.service
 
 ## APIs Used
 
-- **Open-Meteo** (`api.open-meteo.com`) — free weather forecast, no API key needed. Uses `daily=precipitation_sum` with the configured `TIMEZONE`.
+- **NWS** (`api.weather.gov`) — free, no API key needed (US only). Two-step lookup:
+  1. `/points/{lat},{lon}` → resolves to a `forecastGridData` URL
+  2. `forecastGridData` URL → `quantitativePrecipitation` values (mm) summed over today's local date and converted to inches
 - No other external dependencies beyond `tinytuya`.
 
 ## Design Notes
@@ -110,4 +112,6 @@ journalctl -u raindelay.service
 - No `devices.json` needed — device credentials come entirely from env vars.
 - Uses `zoneinfo.ZoneInfo` (Python 3.9+ stdlib) for DST-aware midnight calculation.
 - No `subprocess`, no `requests` — pure stdlib HTTP + tinytuya Python API.
+- NWS requires a `User-Agent` header — set to `raindelay (github.com/tlhakhan/raindelay)`.
+- NWS is US-only. Precipitation `validTime` uses ISO 8601 interval format (`start/PTnH`); values are in mm.
 - Threshold defaults to 0.1 inches; set `RAINFALL_THRESHOLD_INCHES=0` to force activation for testing.

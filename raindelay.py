@@ -9,10 +9,10 @@ import datetime
 import json
 import logging
 import os
+import re
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import zoneinfo
 
@@ -28,6 +28,8 @@ log = logging.getLogger(__name__)
 HTTP_TIMEOUT = 10
 HTTP_RETRIES = 16
 HTTP_RETRY_DELAY = 30  # seconds between attempts
+
+NWS_USER_AGENT = "raindelay (github.com/tlhakhan/raindelay)"
 
 
 def _require_env(name: str) -> str:
@@ -48,33 +50,67 @@ TUYA_LOCAL_KEY = _require_env("TUYA_LOCAL_KEY")
 TUYA_VERSION = float(os.environ.get("TUYA_VERSION", "3.5"))
 
 
-def get_todays_precipitation(lat: float, lon: float, timezone: str) -> float:
-    params = urllib.parse.urlencode({
-        "latitude": lat,
-        "longitude": lon,
-        "daily": "precipitation_sum",
-        "precipitation_unit": "inch",
-        "timezone": timezone,
-        "forecast_days": 1,
-    })
-    url = f"https://api.open-meteo.com/v1/forecast?{params}"
+def _fetch_json(url: str) -> dict:
+    req = urllib.request.Request(url, headers={"User-Agent": NWS_USER_AGENT})
     for attempt in range(1, HTTP_RETRIES + 1):
         try:
-            with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as resp:
-                data = json.loads(resp.read())
-            return float(data["daily"]["precipitation_sum"][0])
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+                return json.loads(resp.read())
         except urllib.error.HTTPError as e:
-            log.warning("Weather API attempt %d/%d failed (HTTP %s): %s", attempt, HTTP_RETRIES, e.code, e.reason)
+            log.warning("HTTP attempt %d/%d failed (%s %s): %s", attempt, HTTP_RETRIES, e.code, e.reason, url)
         except (urllib.error.URLError, OSError) as e:
-            log.warning("Weather API attempt %d/%d failed: %s", attempt, HTTP_RETRIES, e)
-        except (KeyError, IndexError, TypeError, ValueError) as e:
-            log.error("Unexpected weather API response: %s", e)
-            sys.exit(1)
+            log.warning("HTTP attempt %d/%d failed: %s", attempt, HTTP_RETRIES, e)
         if attempt < HTTP_RETRIES:
             log.info("Retrying in %d seconds...", HTTP_RETRY_DELAY)
             time.sleep(HTTP_RETRY_DELAY)
-    log.error("Weather API failed after %d attempts. Giving up.", HTTP_RETRIES)
+    log.error("Request failed after %d attempts: %s", HTTP_RETRIES, url)
     sys.exit(1)
+
+
+def _parse_duration_hours(duration: str) -> float:
+    """Parse an ISO 8601 duration like PT1H or PT6H into hours."""
+    m = re.match(r"PT(\d+(?:\.\d+)?)H", duration)
+    return float(m.group(1)) if m else 1.0
+
+
+def get_nws_grid_url(lat: float, lon: float) -> str:
+    data = _fetch_json(f"https://api.weather.gov/points/{lat:.4f},{lon:.4f}")
+    try:
+        return data["properties"]["forecastGridData"]
+    except (KeyError, TypeError) as e:
+        log.error("Unexpected NWS /points response: %s", e)
+        sys.exit(1)
+
+
+def get_todays_precipitation(grid_url: str, timezone_str: str) -> float:
+    data = _fetch_json(grid_url)
+    tz = zoneinfo.ZoneInfo(timezone_str)
+    now = datetime.datetime.now(tz)
+    today_start = datetime.datetime.combine(now.date(), datetime.time.min, tzinfo=tz)
+    today_end = today_start + datetime.timedelta(days=1)
+
+    try:
+        values = data["properties"]["quantitativePrecipitation"]["values"]
+    except (KeyError, TypeError) as e:
+        log.error("Unexpected NWS gridpoint response: %s", e)
+        sys.exit(1)
+
+    total_mm = 0.0
+    for entry in values:
+        try:
+            valid_time_str, duration_str = entry["validTime"].split("/")
+            start = datetime.datetime.fromisoformat(valid_time_str)
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=datetime.timezone.utc)
+            end = start + datetime.timedelta(hours=_parse_duration_hours(duration_str))
+            if start < today_end and end > today_start:
+                value = entry.get("value")
+                if value is not None:
+                    total_mm += value
+        except (KeyError, ValueError, AttributeError):
+            continue
+
+    return total_mm / 25.4  # mm to inches
 
 
 def seconds_until_local_midnight(timezone_str: str) -> int:
@@ -105,7 +141,10 @@ def main() -> None:
         LATITUDE, LONGITUDE, TIMEZONE, RAINFALL_THRESHOLD_INCHES,
     )
 
-    precip = get_todays_precipitation(LATITUDE, LONGITUDE, TIMEZONE)
+    grid_url = get_nws_grid_url(LATITUDE, LONGITUDE)
+    log.info("NWS grid: %s", grid_url)
+
+    precip = get_todays_precipitation(grid_url, TIMEZONE)
     log.info("Today's forecast precipitation: %.2f inches", precip)
 
     if precip >= RAINFALL_THRESHOLD_INCHES:

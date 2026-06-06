@@ -47,4 +47,4 @@ See [CLAUDE.md](CLAUDE.md) for systemd service and timer unit examples (runs dai
 
 ## APIs
 
-- [Open-Meteo](https://open-meteo.com) — free weather forecast, no API key required
+- [NWS](https://api.weather.gov) — free, no API key required (US only)
