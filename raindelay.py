@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = 10
 HTTP_RETRIES = 16
-HTTP_RETRY_DELAY = 30  # seconds between attempts
+HTTP_RETRY_DELAY = 180  # seconds between attempts
 
 NWS_USER_AGENT = "raindelay (github.com/tlhakhan/raindelay)"
 
@@ -135,6 +135,11 @@ def activate_relay(device: tinytuya.OutletDevice, secs: int) -> None:
     device.set_multiple_values({1: True, 17: secs})
 
 
+def deactivate_relay(device: tinytuya.OutletDevice) -> None:
+    log.info("Setting relay OFF and clearing auto-off timer")
+    device.set_multiple_values({1: False, 17: 0})
+
+
 def main() -> None:
     log.info(
         "Checking rain forecast — lat=%.4f lon=%.4f timezone=%s threshold=%.2f in",
@@ -161,9 +166,15 @@ def main() -> None:
         log.info("Done.")
     else:
         log.info(
-            "Rain below threshold (%.2f < %.2f in). No action taken.",
+            "Rain below threshold (%.2f < %.2f in). Deactivating relay.",
             precip, RAINFALL_THRESHOLD_INCHES,
         )
+        try:
+            deactivate_relay(make_device())
+        except Exception as e:
+            log.error("Failed to deactivate relay: %s", e)
+            sys.exit(1)
+        log.info("Done.")
 
 
 if __name__ == "__main__":
