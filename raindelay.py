@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +26,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = 10
+HTTP_RETRIES = 16
+HTTP_RETRY_DELAY = 30  # seconds between attempts
 
 
 def _require_env(name: str) -> str:
@@ -55,16 +58,23 @@ def get_todays_precipitation(lat: float, lon: float, timezone: str) -> float:
         "forecast_days": 1,
     })
     url = f"https://api.open-meteo.com/v1/forecast?{params}"
-    try:
-        with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as resp:
-            data = json.loads(resp.read())
-        return float(data["daily"]["precipitation_sum"][0])
-    except urllib.error.HTTPError as e:
-        log.error("Weather API failed (HTTP %s): %s", e.code, e.reason)
-        sys.exit(1)
-    except (KeyError, IndexError, TypeError, ValueError) as e:
-        log.error("Unexpected weather API response: %s", e)
-        sys.exit(1)
+    for attempt in range(1, HTTP_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            return float(data["daily"]["precipitation_sum"][0])
+        except urllib.error.HTTPError as e:
+            log.warning("Weather API attempt %d/%d failed (HTTP %s): %s", attempt, HTTP_RETRIES, e.code, e.reason)
+        except (urllib.error.URLError, OSError) as e:
+            log.warning("Weather API attempt %d/%d failed: %s", attempt, HTTP_RETRIES, e)
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            log.error("Unexpected weather API response: %s", e)
+            sys.exit(1)
+        if attempt < HTTP_RETRIES:
+            log.info("Retrying in %d seconds...", HTTP_RETRY_DELAY)
+            time.sleep(HTTP_RETRY_DELAY)
+    log.error("Weather API failed after %d attempts. Giving up.", HTTP_RETRIES)
+    sys.exit(1)
 
 
 def seconds_until_local_midnight(timezone_str: str) -> int:
