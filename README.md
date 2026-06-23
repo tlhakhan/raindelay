@@ -77,9 +77,9 @@ Then in the [Tailscale admin console](https://login.tailscale.com/admin/machines
 
 ### GitHub Secrets and Variables
 
-Under repo → **Settings → Secrets and variables → Actions**:
+Use **repository-level** secrets and variables (not environment-level). Go to repo → **Settings → Secrets and variables → Actions**.
 
-**Secrets** (encrypted):
+**Repository secrets** — click **New repository secret**:
 
 | Secret | Description |
 |---|---|
@@ -91,7 +91,7 @@ Under repo → **Settings → Secrets and variables → Actions**:
 | `TUYA_IP` | Device local IP address |
 | `TUYA_LOCAL_KEY` | Device local key |
 
-**Variables** (plain text, visible — use the Variables tab):
+**Repository variables** — click the **Variables** tab, then **New repository variable**:
 
 | Variable | Description |
 |---|---|
