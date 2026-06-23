@@ -62,16 +62,17 @@ sudo tailscale up --advertise-routes=192.168.4.0/22 --accept-routes
 ```
 
 Then in the [Tailscale admin console](https://login.tailscale.com/admin/machines):
-- Approve the advertised subnet route for the Pi under the machine's settings.
-- Under **Settings → ACL**, declare the `tag:ci` tag:
-  ```json
-  "tagOwners": { "tag:ci": [] }
-  ```
-- Under **Settings → OAuth clients**, create an OAuth client for the ephemeral runner:
-  1. Go to **Settings → OAuth clients → Generate OAuth client**.
+- Find the Pi in the machines list, click the **…** menu → **Edit route settings**, and enable the `192.168.4.0/22` subnet route.
+- On the same machine, click the **…** menu → **Disable key expiry** so the Pi node never needs to reauthenticate.
+- Under **Access Controls → Definitions → Tags**, add a new tag:
+  - **Tag name**: `ci`
+  - **Tag owner**: leave empty (no owner required for automated runners)
+  - **Note**: `GitHub Actions ephemeral runner`
+- Under **Settings → Trust credentials**, create an OAuth client for the ephemeral runner:
+  1. Go to **Settings → Trust credentials** and click **Add credential**.
   2. Give it a description (e.g. `github-actions-raindelay`).
   3. Under **Scopes**, enable **Auth keys** → **Write** — this allows the client to create ephemeral auth keys so the runner can register as a Tailscale node.
-  4. Click **Generate client**. Copy the **Client ID** and **Client secret** immediately — the secret is shown only once.
+  4. Click **Add credential**. Copy the **Client ID** and **Client secret** immediately — the secret is shown only once.
   5. Save both values as GitHub Secrets `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_CLIENT_SECRET` (see below).
 
 ### GitHub Secrets and Variables
