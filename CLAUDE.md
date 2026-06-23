@@ -5,12 +5,12 @@ Checks today's rain forecast and activates a tinytuya relay switch (irrigation r
 ## Project Structure
 
 ```
-raindelay.py          # main script
-raindelay.env.example # template for secrets/config (committed)
-raindelay.env         # live secrets — gitignored, copy from example
+raindelay.py                        # main script
+raindelay.env.example               # template for local testing (committed)
+raindelay.env                       # live secrets — gitignored, copy from example
 requirements.txt
 .gitignore
-venv/                 # virtualenv — gitignored
+.github/workflows/raindelay.yml     # scheduled GitHub Actions workflow
 ```
 
 ## Environment Variables
@@ -28,22 +28,17 @@ All configuration comes from environment variables. Copy `raindelay.env.example`
 | `TUYA_LOCAL_KEY` | yes | — | Device local key |
 | `TUYA_VERSION` | no | `3.5` | Tinytuya protocol version |
 
-## Setup
+## Local Testing
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install tinytuya
+pip install -r requirements.txt
 
 cp raindelay.env.example raindelay.env
 # edit raindelay.env with your values
-```
 
-## Running
-
-```bash
 source raindelay.env
-source venv/bin/activate
 python3 raindelay.py
 ```
 
@@ -56,49 +51,15 @@ When rain is forecast above threshold, the script:
 1. Sets DPS 1 = `True` (relay on)
 2. Sets DPS 17 = seconds remaining until local midnight
 
-If rain is below threshold, no action is taken (relay stays in its current state).
+If rain is below threshold, the relay is deactivated.
 
 Re-running the script when the relay is already on is safe — it refreshes the DPS 17 countdown to the correct remaining seconds.
 
-## Systemd Deployment
+## Deployment
 
-Deploy the project to `/opt/raindelay/` (or any path — update the unit files accordingly).
+The script runs on a GitHub Actions schedule (`.github/workflows/raindelay.yml`) via a GitHub-hosted runner. Because the Tuya device is on the local LAN, a Raspberry Pi on the same network acts as a Tailscale subnet router (`192.168.4.0/22`), allowing the runner to reach `TUYA_IP` over the VPN.
 
-**`/etc/systemd/system/raindelay.service`**
-```ini
-[Unit]
-Description=Rain delay relay check
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-EnvironmentFile=/opt/raindelay/raindelay.env
-ExecStart=/opt/raindelay/venv/bin/python3 /opt/raindelay/raindelay.py
-StandardOutput=journal
-StandardError=journal
-```
-
-**`/etc/systemd/system/raindelay.timer`**
-```ini
-[Unit]
-Description=Run rain delay check daily at 3am
-
-[Timer]
-OnCalendar=*-*-* 03:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-```bash
-systemctl daemon-reload
-systemctl enable --now raindelay.timer
-
-# View logs
-journalctl -u raindelay.service
-```
+The runner authenticates to Tailscale using an OAuth client (`tag:ci`) with the `Auth keys → Write` scope. Configuration is split between repository secrets (credentials) and repository variables (non-sensitive config like `TIMEZONE`). All datetime operations use the `TIMEZONE` variable explicitly via `zoneinfo.ZoneInfo`, so the runner's UTC system clock has no effect on behavior.
 
 ## APIs Used
 
