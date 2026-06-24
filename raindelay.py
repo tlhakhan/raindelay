@@ -25,9 +25,9 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-HTTP_TIMEOUT = 10
-HTTP_RETRIES = 16
-HTTP_RETRY_DELAY = 180  # seconds between attempts
+HTTP_TIMEOUT = 4
+HTTP_RETRIES = 3
+HTTP_RETRY_DELAY = 5  # seconds between attempts
 
 NWS_USER_AGENT = "raindelay (github.com/tlhakhan/raindelay)"
 
