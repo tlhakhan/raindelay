@@ -2,7 +2,7 @@ name: Rain Delay
 
 on:
   schedule:
-    - cron: '7 8 * * *'  # 3am ET (UTC-5) — adjust offset for your timezone
+    - cron: '7 7 * * *'  # 3am ET (UTC-5) — adjust offset for your timezone
   workflow_dispatch:       # allow manual runs
 
 jobs:
